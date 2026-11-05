@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 從原始資料重跑（約 10 分鐘，2 核 CPU）
+# 從原始資料重跑（約 10–20 分鐘，視 CPU 而定）
 # Windows 的 Git Bash 也能跑：
 #   - 自動找可以用的 Python（Windows 上 python3 常常是微軟商店的空殼，執行了不會有任何反應）
 #   - python -u：不緩衝輸出，進度會即時印出來（Git Bash 的視窗不是真正的終端機，不加 -u 要等跑完才一次印出）
@@ -28,7 +28,8 @@ echo "使用 $($PY --version)（$PY）"
 export PYTHONUTF8=1
 START=$SECONDS
 "$PY" -u src/build_turnovers.py       # data/raw → data/processed/turnovers.csv（各步驟時間 → results/timing_build.csv）
-"$PY" -u src/turnover_experiment.py   # 探索、三層方法、顯著性、誤差樣貌（各步驟時間 → results/timing_experiment.csv）
+"$PY" -u src/turnover_experiment.py   # 探索、三層方法、顯著性（各步驟時間 → results/timing_experiment.csv）
+"$PY" -u src/ablation_analysis.py     # 消融、誤差分析、圖（各步驟時間 → results/timing_ablation.csv）
 T=$((SECONDS - START))
 echo
 echo "全部完成，總共 $((T / 60)) 分 $((T % 60)) 秒"

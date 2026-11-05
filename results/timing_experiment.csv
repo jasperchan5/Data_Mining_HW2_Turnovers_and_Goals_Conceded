@@ -1,11 +1,11 @@
 step,seconds
 讀取資料與切分,1.04
-探索分析（訓練集）,1.26
+探索分析（訓練集）,1.21
 Tier 1,0.17
-Tier 2：驗證集搜尋 24 組,65.42
-Tier 2：5 個 seed + Mahalanobis,27.07
-Tier 3：驗證集搜尋 4 組,14.74
-Tier 3：5 個 seed,5.67
-顯著性（block bootstrap 5 組 × 1000 次）,66.46
+Tier 2：驗證集搜尋 24 組,64.18
+Tier 2：5 個 seed + Mahalanobis,34.35
+Tier 3：驗證集搜尋 4 組,15.44
+Tier 3：5 個 seed,8.73
+顯著性（block bootstrap 5 組 × 1000 次）,66.33
 誤差樣貌與輸出,0.02
-total,181.85
+total,191.45

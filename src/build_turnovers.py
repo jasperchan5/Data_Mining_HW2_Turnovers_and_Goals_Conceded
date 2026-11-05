@@ -42,25 +42,34 @@ def tags(e):
 end_counts = defaultdict(int)
 
 
+def is_placeholder(q):
+    """四個角落 (0|100, 0|100) 是 Wyscout 的佔位座標（守門員出擊、撲救、比賽中斷常見），不是真的位置"""
+    return q["x"] in (0, 100) and q["y"] in (0, 100)
+
+
 def fix_end(p0, p1, e, es, i, max_gap=5.0):
     """
     落點 (0, 0) 是 Wyscout 沒記錄落點時的佔位值（多半是被解圍或被守門員接走的傳中），不是真的傳到自家底線。
-    用下一個事件的位置推回落點：
-        - 下一個事件是對手的：座標換回我方視角 (100 - x, 100 - y)
-        - 下一個事件是本隊的：直接用
-        - 沒有下一個事件、不同半場、相隔超過 max_gap 秒、或下一個事件沒有座標：退回用傳球起點
-    下一個事件只用來補回「這次傳球本身的落點」，不用它的任何其他資訊。
+    用「之後第一個有真實座標的事件」推回落點：
+        - 往後找同一個半場、相隔不超過 max_gap 秒的事件，跳過：沒有座標的、比賽中斷（Interruption）、
+          座標是四個角落佔位值的（守門員出擊 / 撲救事件常記成 (100, 100)，換成我方視角會變成 (0, 0) 附近，
+          等於又把傳中放回自家底線）
+        - 找到的事件是對手的：座標換回我方視角 (100 - x, 100 - y)；是本隊的：直接用
+        - 找不到：退回用傳球起點
+    之後的事件只用來補回「這次傳球本身的落點」，不用它的任何其他資訊。
     """
     if not (p1["x"] == 0 and p1["y"] == 0):
         return p1, "recorded"
-    nx = es[i + 1] if i + 1 < len(es) else None
-    if (nx is None or nx["matchPeriod"] != e["matchPeriod"] or nx["eventSec"] - e["eventSec"] > max_gap
-            or not nx["positions"]):
-        return p0, "imputed_start"
-    q = nx["positions"][0]
-    if nx["teamId"] != e["teamId"]:
-        return {"x": 100 - q["x"], "y": 100 - q["y"]}, "imputed_next_opp"
-    return {"x": q["x"], "y": q["y"]}, "imputed_next_own"
+    for nx in es[i + 1:i + 10]:
+        if nx["matchPeriod"] != e["matchPeriod"] or nx["eventSec"] - e["eventSec"] > max_gap:
+            break
+        if not nx["positions"] or nx["eventName"] == "Interruption" or is_placeholder(nx["positions"][0]):
+            continue
+        q = nx["positions"][0]
+        if nx["teamId"] != e["teamId"]:
+            return {"x": 100 - q["x"], "y": 100 - q["y"]}, "imputed_next_opp"
+        return {"x": q["x"], "y": q["y"]}, "imputed_next_own"
+    return p0, "imputed_start"
 
 
 def match_rows(es, match, roles):
@@ -70,10 +79,13 @@ def match_rows(es, match, roles):
     other = lambda t: next((x for x in teams if x != t), None)
 
     goals = []                                  # (period, sec, scoring team)
+    shots = []                                  # (period, sec, shooting team)：只用於誤差分析
     for e in es:
         if e["matchPeriod"] not in PERIOD_OFFSET:
             continue
         t = tags(e)
+        if e["eventName"] == "Shot" or (e["eventName"] == "Free Kick" and e["subEventName"] in ("Free kick shot", "Penalty")):
+            shots.append((e["matchPeriod"], e["eventSec"], e["teamId"]))
         if 101 in t and e["eventName"] in ("Shot", "Free Kick"):
             goals.append((e["matchPeriod"], e["eventSec"], e["teamId"]))
         if 102 in t:
@@ -97,7 +109,17 @@ def match_rows(es, match, roles):
             ctx = [c for c in es[max(0, i - 40):i] if c["matchPeriod"] == period and sec - c["eventSec"] <= CONTEXT]
             own = [c for c in ctx if c["teamId"] == tid]
             oppc = [c for c in ctx if c["teamId"] == opp]
-            label = int(any(p == period and 0 <= s - sec <= WINDOW and tm == opp for p, s, tm in goals))
+            in_window = lambda lst: [s for p, s, tm in lst if p == period and 0 <= s - sec <= WINDOW and tm == opp]
+            goal_secs = in_window(goals)
+            label = int(bool(goal_secs))
+            # 以下三欄是「失誤之後」發生的事，只用於誤差分析（解釋誤判），絕不當特徵
+            sec_to_goal = min(goal_secs) - sec if goal_secs else np.nan
+            after = {
+                "sec_to_goal": sec_to_goal,
+                "events_to_goal": (sum(1 for c in es[i + 1:i + 80] if c["matchPeriod"] == period
+                                       and sec < c["eventSec"] <= sec + sec_to_goal) if goal_secs else np.nan),
+                "opp_shot_15s": int(bool(in_window(shots))),
+            }
             row = {
                 "matchId": match["wyId"], "eventId": e["id"], "date": match["dateutc"],
                 "competitionId": match["competitionId"], "teamId": tid, "playerId": e["playerId"],
@@ -123,6 +145,7 @@ def match_rows(es, match, roles):
                 "own_min_x_10s": min((c["positions"][0]["x"] for c in own if c["positions"]), default=p0["x"]),
                 "role": roles.get(e["playerId"], "NA"),
                 "end_source": end_source,       # 只用於檢查，不是特徵
+                **after,                        # 只用於誤差分析，不是特徵
                 "label": label,
             }
             rows.append(row)

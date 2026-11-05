@@ -15,93 +15,25 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ks_2samp, ttest_rel
 from sklearn.covariance import EmpiricalCovariance
-from sklearn.ensemble import IsolationForest
-from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score
+from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 from xgboost import XGBClassifier
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import (DANGER, FULL, GRID, RES, SEEDS, SETS, best_f1_tau, bootstrap_gap,  # noqa: E402
+                    fit_if as _fit_if, load_split, metrics, summarize)
 from timing import lap, summary  # noqa: E402
-RES = ROOT / "results"
-RES.mkdir(exist_ok=True)
-SEEDS = [0, 1, 2, 3, 4]
-BUDGETS = (0.01, 0.10)
-
-PASS_TYPES = ["pt_simple_pass", "pt_high_pass", "pt_launch", "pt_cross", "pt_head_pass", "pt_smart_pass", "pt_hand_pass"]
-ROLES = ["role_DF", "role_MD", "role_FW", "role_GK"]
-RAW = ["x", "lateral", "end_x", "end_lateral", "pass_len", "backward", "minute", "home"] + PASS_TYPES + ROLES
-CONTEXT = ["dist_own_goal", "in_own_third", "counter_attack", "score_diff", "team_prev_losses",
-           "own_events_10s", "opp_events_10s", "opp_duel_3s", "own_min_x_10s"]
-FULL = RAW + CONTEXT
-# 事先依足球常識定義的「危險」特徵：在哪裡丟、球丟到哪裡、是不是回傳、是否在對手壓迫下
-DANGER = ["dist_own_goal", "lateral", "end_x", "end_lateral", "backward", "opp_duel_3s"]
-SETS = {"full": FULL, "danger (6)": DANGER}
-GRID = [dict(n_estimators=n, max_samples=s, max_features=f)
-        for n in (200, 500) for s in (256, 1024, 4096) for f in (0.5, 1.0)]
 
 # ---------------------------------------------------------------------------
-df = pd.read_csv(ROOT / "data" / "processed" / "turnovers.csv", parse_dates=["date"])
-for r in ["DF", "MD", "FW", "GK"]:
-    df[f"role_{r}"] = (df.role == r).astype(int)
-m = df[["matchId", "date"]].drop_duplicates().sort_values(["date", "matchId"]).reset_index(drop=True)
-c1, c2 = int(len(m) * 0.6), int(len(m) * 0.8)
-split = pd.Series("train", index=m.matchId)
-split.iloc[c1:c2] = "val"
-split.iloc[c2:] = "test"
-df["split"] = df.matchId.map(split)
-tr, va, te = (df[df.split == s].reset_index(drop=True) for s in ("train", "val", "test"))
+tr, va, te, n_matches = load_split()
 ytr, yva, yte = tr.label.values, va.label.values, te.label.values
 normal = tr[tr.label == 0]
 log = {"rows": {s: len(d) for s, d in (("train", tr), ("val", va), ("test", te))},
        "positives": {s: int(d.label.sum()) for s, d in (("train", tr), ("val", va), ("test", te))},
-       "matches": {"train": c1, "val": c2 - c1, "test": len(m) - c2}}
+       "matches": n_matches}
 print(log)
 lap("讀取資料與切分")
-
-
-def metrics(y, s, tau=None):
-    y, s = np.asarray(y), np.asarray(s)
-    out = {"pr_auc": average_precision_score(y, s), "roc_auc": roc_auc_score(y, s)}
-    order = np.argsort(-s, kind="stable")
-    for b in BUDGETS:
-        k = int(round(len(s) * b))
-        hit = int(y[order[:k]].sum())
-        out[f"p_at_{int(b*100)}"], out[f"r_at_{int(b*100)}"], out[f"hits_at_{int(b*100)}"] = hit / k, hit / max(y.sum(), 1), hit
-    if tau is not None:
-        pred = s >= tau
-        tp = (pred & (y == 1)).sum()
-        p, r = tp / max(pred.sum(), 1), tp / max(y.sum(), 1)
-        out.update(precision=p, recall=r, f1=0 if p + r == 0 else 2 * p * r / (p + r), alert_rate=pred.mean())
-    return out
-
-
-def best_f1_tau(y, s):
-    p, r, t = precision_recall_curve(y, s)
-    f1 = 2 * p * r / np.clip(p + r, 1e-12, None)
-    return float(t[int(np.nanargmax(f1[:-1]))])
-
-
-def bootstrap_gap(y, a, b, groups, n=1000, seed=0, desc="bootstrap"):
-    rng = np.random.default_rng(seed)
-    uniq = np.unique(groups)
-    idx_by = {g: np.where(groups == g)[0] for g in uniq}
-    gaps = []
-    for _ in tqdm(range(n), desc=desc, unit="次", leave=False):
-        idx = np.concatenate([idx_by[g] for g in rng.choice(uniq, len(uniq))])
-        if y[idx].sum():
-            gaps.append(average_precision_score(y[idx], a[idx]) - average_precision_score(y[idx], b[idx]))
-    return [float(average_precision_score(y, a) - average_precision_score(y, b)),
-            float(np.percentile(gaps, 2.5)), float(np.percentile(gaps, 97.5))]
-
-
-def summarize(name, runs):
-    row = {"method": name}
-    for k in runs[0]:
-        v = [r[k] for r in runs]
-        row[k], row[f"{k}_std"] = float(np.mean(v)), float(np.std(v))
-    return row
 
 
 # ---- 探索（只用訓練集）----
@@ -146,10 +78,8 @@ lap("Tier 1")
 
 # ---- Tier 2：Isolation Forest（只用正常樣本），特徵組與超參數都用驗證集選 ----
 def fit_if(feats, p, seed):
-    sc = StandardScaler().fit(normal[feats])
-    t0 = time.perf_counter()
-    mdl = IsolationForest(random_state=seed, n_jobs=-1, **p).fit(sc.transform(normal[feats]))
-    return (lambda d: -mdl.score_samples(sc.transform(d[feats]))), time.perf_counter() - t0
+    f, fit_s, _, _ = _fit_if(normal, feats, p, seed)
+    return f, fit_s
 
 
 search, best_if = [], {}
@@ -228,6 +158,10 @@ lap("Tier 3：5 個 seed")
 
 res = pd.DataFrame(rows)
 res.to_csv(RES / "main_results.csv", index=False)
+# 測試集上每筆失誤的分數（5 個 seed 平均）：消融與誤差分析（ablation_analysis.py）直接沿用，確保和主表是同一組分數
+te[["matchId", "eventId", "label"]].assign(
+    single=scores["single"], if_danger=scores["IF danger (6)"], if_full=scores["IF full"], xgb=scores["xgb"],
+).to_csv(RES / "test_scores.csv", index=False)
 
 t2 = scores[f"IF {T2_SET}"]
 log["significance"] = {
