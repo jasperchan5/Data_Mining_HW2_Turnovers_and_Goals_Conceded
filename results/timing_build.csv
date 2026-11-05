@@ -1,0 +1,18 @@
+step,seconds
+讀取比賽、球員、球隊資料,0.41
+England：讀檔,2.31
+England：處理 380 場,2.89
+European_Championship：讀檔,0.31
+European_Championship：處理 51 場,0.51
+France：讀檔,2.11
+France：處理 380 場,2.27
+Germany：讀檔,1.9
+Germany：處理 306 場,2.58
+Italy：讀檔,2.18
+Italy：處理 380 場,2.48
+Spain：讀檔,2.1
+Spain：處理 380 場,2.9
+World_Cup：讀檔,0.34
+World_Cup：處理 64 場,0.55
+寫出 turnovers.csv,4.55
+total,30.54

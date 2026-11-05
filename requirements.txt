@@ -1,0 +1,8 @@
+# 需要 Python 3.12 以上（xgboost 3.4、numpy 2.5、scipy 1.18 都要求 >= 3.12）
+# 建議 Python 3.12（和產生 results/ 時的版本一致）；下面是實際用的套件版本
+numpy==2.5.3
+pandas==3.0.5
+scipy==1.18.1
+scikit-learn==1.9.1
+xgboost==3.4.1
+tqdm==4.70.1

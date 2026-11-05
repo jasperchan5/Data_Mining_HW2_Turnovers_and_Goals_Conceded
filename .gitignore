@@ -1,0 +1,18 @@
+# Python
+DM_HW2_G14/
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Wyscout 原始資料：約 900 MB，有 5 個檔案超過 GitHub 的 100 MB 上限，不放進 repo
+# （下載方式見 data/raw/README.md；處理好的 data/processed/turnovers.csv 有放）
+data/raw/*
+!data/raw/README.md
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

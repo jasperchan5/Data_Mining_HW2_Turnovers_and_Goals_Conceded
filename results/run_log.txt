@@ -1,0 +1,105 @@
+{'rows': {'train': 170396, 'val': 59351, 'test': 54272}, 'positives': {'train': 501, 'val': 186, 'test': 182}, 'matches': {'train': 1164, 'val': 388, 'test': 389}}
+       feature  auc_dir  sign     ks  mean_pos  mean_neg
+         end_x   0.7646    -1 0.3978   43.7645   66.3565
+ dist_own_goal   0.6788    -1 0.2614   43.7730   59.4884
+             x   0.6701    -1 0.2531   37.4611   52.3281
+ own_min_x_10s   0.6215    -1 0.2046   30.9102   39.7678
+  in_own_third   0.6184     1 0.2369    0.5210    0.2841
+      pass_len   0.6139    -1 0.2068   17.4937   24.6596
+pt_simple_pass   0.6072     1 0.2143    0.5988    0.3845
+    score_diff   0.6049    -1 0.1887   -0.4890   -0.0352
+       lateral   0.5954    -1 0.1541   23.2056   27.7559
+opp_events_10s   0.5936     1 0.1535    1.9760    1.4584
+               n      rate     share
+x                                   
+own third  48526  0.005379  0.284784
+middle     63658  0.002749  0.373589
+opp third  58212  0.001117  0.341628
+                                           method  pr_auc  pr_auc_std  roc_auc  p_at_1  hits_at_1  r_at_1  p_at_10  hits_at_10  r_at_10     f1  alert_rate  fit_s  ms_per_sample
+                                    T1 all-normal  0.0034      0.0000   0.5000  0.0000        0.0  0.0000   0.0020        11.0   0.0604 0.0000      0.0000    NaN            NaN
+                                        T1 random  0.0036      0.0002   0.5064  0.0055        3.0  0.0165   0.0035        18.8   0.1033 0.0050      0.1116    NaN            NaN
+                        T1 single feature (end_x)  0.0102      0.0000   0.7635  0.0055        3.0  0.0165   0.0133        72.0   0.3956 0.0275      0.0595    NaN            NaN
+                        T2 Isolation Forest, full  0.0044      0.0002   0.5718  0.0018        1.0  0.0055   0.0055        30.0   0.1648 0.0042      0.0260 1.2949         0.0186
+T2 Isolation Forest, danger (6) (selected on val)  0.0093      0.0016   0.6060  0.0144        7.8  0.0429   0.0087        47.4   0.2604 0.0227      0.0172 0.9683         0.0132
+                  T2 ref: Mahalanobis, danger (6)  0.0052      0.0000   0.5896  0.0018        1.0  0.0055   0.0070        38.0   0.2088 0.0153      0.0713    NaN            NaN
+                          T3 XGBoost (supervised)  0.0315      0.0009   0.8237  0.0545       29.6  0.1626   0.0173        93.8   0.5154 0.0700      0.0025 1.0898         0.0007
+{
+ "rows": {
+  "train": 170396,
+  "val": 59351,
+  "test": 54272
+ },
+ "positives": {
+  "train": 501,
+  "val": 186,
+  "test": 182
+ },
+ "matches": {
+  "train": 1164,
+  "val": 388,
+  "test": 389
+ },
+ "single_feature": {
+  "feature": "end_x",
+  "sign": -1,
+  "train_auc": 0.7645803304953118
+ },
+ "iforest_best": {
+  "full": {
+   "params": {
+    "n_estimators": 200,
+    "max_samples": 4096,
+    "max_features": 0.5
+   },
+   "val_pr_auc": 0.005041579164701944
+  },
+  "danger (6)": {
+   "params": {
+    "n_estimators": 200,
+    "max_samples": 1024,
+    "max_features": 0.5
+   },
+   "val_pr_auc": 0.006818418394348661
+  }
+ },
+ "T2_feature_set": "danger (6)",
+ "xgb_best": {
+  "max_depth": 5,
+  "min_child_weight": 10,
+  "best_iteration": 102
+ },
+ "significance": {
+  "T2_minus_random": [
+   0.008673046760881476,
+   0.0004845734351737263,
+   0.022261688423149587
+  ],
+  "T2_minus_single": [
+   0.002317894122600788,
+   -0.0044986775152234424,
+   0.01595036469302869
+  ],
+  "T3_minus_T2": [
+   0.019045359280858973,
+   0.00485688506227467,
+   0.03726903354587454
+  ],
+  "T3_minus_single": [
+   0.021363253403459764,
+   0.01235023455542621,
+   0.038249177331306845
+  ],
+  "IF_danger_minus_IF_full": [
+   0.008084435204209994,
+   0.0014425052011519256,
+   0.022169613913674793
+  ],
+  "T3_vs_T2_paired_t_p": 4.489350412754126e-06
+ }
+}
+                  x  dist_own_goal   end_x  pass_len  backward  opp_duel_3s  pt_launch  pt_high_pass  pt_hand_pass  role_GK  counter_attack
+flag  label                                                                                                                                
+False 0      52.982         60.150  67.065    24.244     0.165        0.202      0.070         0.198         0.002    0.042           0.017
+      1      39.849         46.728  44.983    16.315     0.302        0.209      0.041         0.070         0.000    0.023           0.017
+True  0      41.447         48.194  16.373    35.724     0.829        0.651      0.056         0.039         0.009    0.058           0.013
+      1      16.900         20.519   8.900    16.477     0.900        0.200      0.000         0.000         0.000    0.100           0.000

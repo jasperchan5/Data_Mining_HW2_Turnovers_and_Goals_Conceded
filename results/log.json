@@ -1,0 +1,74 @@
+{
+  "rows": {
+    "train": 170396,
+    "val": 59351,
+    "test": 54272
+  },
+  "positives": {
+    "train": 501,
+    "val": 186,
+    "test": 182
+  },
+  "matches": {
+    "train": 1164,
+    "val": 388,
+    "test": 389
+  },
+  "single_feature": {
+    "feature": "end_x",
+    "sign": -1,
+    "train_auc": 0.7645803304953118
+  },
+  "iforest_best": {
+    "full": {
+      "params": {
+        "n_estimators": 200,
+        "max_samples": 4096,
+        "max_features": 0.5
+      },
+      "val_pr_auc": 0.005041579164701944
+    },
+    "danger (6)": {
+      "params": {
+        "n_estimators": 200,
+        "max_samples": 1024,
+        "max_features": 0.5
+      },
+      "val_pr_auc": 0.006818418394348661
+    }
+  },
+  "T2_feature_set": "danger (6)",
+  "xgb_best": {
+    "max_depth": 3,
+    "min_child_weight": 10,
+    "best_iteration": 85
+  },
+  "significance": {
+    "T2_minus_random": [
+      0.008673046760881476,
+      0.0004845734351737263,
+      0.022261688423149587
+    ],
+    "T2_minus_single": [
+      0.002317894122600788,
+      -0.0044986775152234424,
+      0.01595036469302869
+    ],
+    "T3_minus_T2": [
+      0.01599669446479176,
+      0.0026776738053491465,
+      0.030531447222236784
+    ],
+    "T3_minus_single": [
+      0.01831458858739255,
+      0.011342203318464947,
+      0.03074707761871861
+    ],
+    "IF_danger_minus_IF_full": [
+      0.008084435204209994,
+      0.0014425052011519256,
+      0.022169613913674793
+    ],
+    "T3_vs_T2_paired_t_p": 1.8448918954728687e-06
+  }
+}
