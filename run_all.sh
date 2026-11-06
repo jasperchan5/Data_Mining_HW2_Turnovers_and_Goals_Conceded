@@ -30,6 +30,7 @@ START=$SECONDS
 "$PY" -u src/build_turnovers.py       # data/raw → data/processed/turnovers.csv（各步驟時間 → results/timing_build.csv）
 "$PY" -u src/turnover_experiment.py   # 探索、三層方法、顯著性（各步驟時間 → results/timing_experiment.csv）
 "$PY" -u src/ablation_analysis.py     # 消融、誤差分析、圖（各步驟時間 → results/timing_ablation.csv）
+"$PY" -u src/robustness_checks.py     # 補值洩漏檢查、射門標籤、失誤後發展（各步驟時間 → results/timing_robustness.csv）
 T=$((SECONDS - START))
 echo
 echo "全部完成，總共 $((T / 60)) 分 $((T % 60)) 秒"

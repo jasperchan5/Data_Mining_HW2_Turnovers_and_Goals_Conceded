@@ -33,6 +33,11 @@ DANGER = ["dist_own_goal", "lateral", "end_x", "end_lateral", "backward", "opp_d
 #   -1 = 數值越小越危險（離自家球門近、靠中路、球落在自家半場）；+1 = 數值越大越危險（回傳、被壓迫）
 DANGER_SIGN = {"dist_own_goal": -1, "lateral": -1, "end_x": -1, "end_lateral": -1, "backward": 1, "opp_duel_3s": 1}
 SETS = {"full": FULL, "danger (6)": DANGER}
+# Tier 2 的候選（驗證集決定用哪一個）：特徵組 × 分數方向。單邊需要每個特徵的危險方向，只有危險 6 個有事先定義
+#   名稱 → (特徵, 標準化後的轉換)
+CANDIDATES = {"full, two-sided": (FULL, None),
+              "danger (6), two-sided": (DANGER, None),
+              "danger (6), one-sided": (DANGER, "one_sided")}
 GRID = [dict(n_estimators=n, max_samples=s, max_features=f)
         for n in (200, 500) for s in (256, 1024, 4096) for f in (0.5, 1.0)]
 
@@ -112,6 +117,8 @@ def fit_if(train_rows, feats, p, seed, transform=None):
     分數 = −score_samples，越大越異常。transform：標準化之後再套一層轉換（例如 one_sided）。
     """
     sc = StandardScaler().fit(train_rows[feats])
+    if transform == "one_sided":
+        transform = one_sided
     tf = (lambda z: z) if transform is None else (lambda z: transform(z, feats))
     t0 = time.perf_counter()
     mdl = IsolationForest(random_state=seed, n_jobs=-1, **p).fit(tf(sc.transform(train_rows[feats])))

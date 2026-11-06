@@ -28,6 +28,7 @@ from wyscout_data import iter_events, load_all  # noqa: E402
 from timing import fmt, record, step, summary  # noqa: E402
 
 WINDOW = 15.0
+POST = 5.0       # 失誤後幾秒內的發展（只用於檢驗 H3）
 CONTEXT = 10.0
 PERIOD_ORDER = {"1H": 0, "2H": 1, "E1": 2, "E2": 3, "P": 4}
 PERIOD_OFFSET = {"1H": 0, "2H": 45, "E1": 90, "E2": 105}
@@ -120,6 +121,16 @@ def match_rows(es, match, roles):
                                        and sec < c["eventSec"] <= sec + sec_to_goal) if goal_secs else np.nan),
                 "opp_shot_15s": int(bool(in_window(shots))),
             }
+            # 失誤後 5 秒內的發展：只用於檢驗 H3（漏掉的致命失誤是不是取決於之後發生的事），不是可部署的特徵
+            post = [c for c in es[i + 1:i + 40] if c["matchPeriod"] == period and 0 < c["eventSec"] - sec <= POST]
+            post_x = [(100 - c["positions"][0]["x"]) if c["teamId"] == opp else c["positions"][0]["x"]
+                      for c in post if c["positions"] and not is_placeholder(c["positions"][0])
+                      and c["eventName"] != "Interruption"]
+            after.update({
+                "post_opp_events_5s": sum(1 for c in post if c["teamId"] == opp),
+                "post_own_events_5s": sum(1 for c in post if c["teamId"] == tid),
+                "post_ball_min_x_5s": min(post_x + [p1["x"]]),
+            })
             row = {
                 "matchId": match["wyId"], "eventId": e["id"], "date": match["dateutc"],
                 "competitionId": match["competitionId"], "teamId": tid, "playerId": e["playerId"],

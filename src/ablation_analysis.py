@@ -2,10 +2,11 @@
 消融與誤差分析（Tier 2 為主），沿用主實驗的切分、超參數與測試分數
     先跑 turnover_experiment.py（會寫出 results/log.json、results/test_scores.csv）
 
-消融：一次只改一個因素，其他照主實驗（危險 6 個特徵、驗證集選出的超參數、只用正常樣本、5 個 seed）
+主方法 = 驗證集選出的 Tier 2 候選（特徵組 × 分數方向 × 超參數，見 log.json 的 T2_config），預期是「危險 6 個、單邊」
+消融：一次只改一個因素，其他照主方法（只用正常樣本、5 個 seed）
     A1 訓練資料污染：混入 0% / 0.1% / 0.2% / 全部（0.29%）致命失誤
-    A2 分數函數（異常偵測特有）：雙邊 Isolation Forest（主方法）vs 單邊尾端 vs 其他 one-class 分數
-    A3 特徵組：拿掉 / 加入一組特徵
+    A2 分數函數（異常偵測特有）：單邊 vs 雙邊 Isolation Forest vs 不用模型的加總 vs 其他 one-class 分數
+    A3 特徵組：從危險 6 個拿掉一組（單邊需要每個特徵的方向，所以不做「加入」）
     A4 門檻 τ：驗證集最佳 F1 / 審查預算 1%、10% / 不用標籤（正常訓練分數的 99 百分位）
 
 誤差分析：審查預算 1%（τ = 驗證集分數的 99 百分位）下的 TP / FP / FN，
@@ -32,7 +33,7 @@ from sklearn.preprocessing import StandardScaler  # noqa: E402
 from tqdm import tqdm  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import (DANGER, DANGER_SIGN, FULL, RES, ROOT, SEEDS, best_f1_tau, bootstrap_gap,  # noqa: E402
+from common import (CANDIDATES, DANGER, FULL, RES, ROOT, SEEDS, best_f1_tau, bootstrap_gap,  # noqa: E402
                     fit_if, load_split, metrics, one_sided, summarize)
 from timing import lap, summary  # noqa: E402
 
@@ -47,27 +48,32 @@ normal = tr[tr.label == 0]
 g = te.matchId.values
 
 main_log = json.loads((RES / "log.json").read_text())
-T2_SET = main_log["T2_feature_set"]
-assert T2_SET == "danger (6)", "消融以危險 6 個特徵為主方法；若驗證集選了別的特徵組，請先檢查"
-P = main_log["iforest_best"][T2_SET]["params"]
+T2 = main_log["T2_config"]
+FEATS, TF = CANDIDATES[T2]
+assert FEATS == DANGER, "消融以危險 6 個特徵為主方法；若驗證集選了別的候選，請先檢查"
+TWO = "danger (6), two-sided"
+P = main_log["iforest_best"][T2]["params"]
+P_TWO = main_log["iforest_best"][TWO]["params"]
+PRIMARY_IS_ONE_SIDED = TF == "one_sided"
 XB = main_log["xgb_best"]
 ts = pd.read_csv(RES / "test_scores.csv")
 assert (ts.eventId.values == te.eventId.values).all(), "test_scores.csv 和目前的切分對不上，請先重跑 turnover_experiment.py"
-log = {"T2_params": P, "xgb_best": XB}
+log = {"T2_config": T2, "T2_params": P, "two_sided_params": P_TWO, "xgb_best": XB}
 lap("讀取資料、主實驗設定")
 
 
 # ---------------------------------------------------------------------------
-def run_if(feats=DANGER, train_rows=None, transform=None, tau_rule="best_f1", contam=0.0):
+def run_if(feats=DANGER, transform=TF, params=None, tau_rule="best_f1", contam=0.0):
     """5 個 seed；回傳 (每個 seed 的測試指標, 測試分數平均, 驗證分數平均)"""
+    params = P if params is None else params
     runs, s_te_all, s_va_all = [], [], []
     for seed in SEEDS:
-        rows = normal if train_rows is None else train_rows
+        rows = normal
         if contam > 0:
             n_pos = int(round(len(normal) * contam / (1 - contam)))
             pos = tr[tr.label == 1]
             rows = pd.concat([normal, pos.sample(n=min(n_pos, len(pos)), random_state=seed)])
-        f, _, _, _ = fit_if(rows, feats, P, seed, transform)
+        f, _, _, _ = fit_if(rows, feats, params, seed, transform)
         s_va, s_te = f(va), f(te)
         if tau_rule == "best_f1":
             tau = best_f1_tau(yva, s_va)
@@ -92,14 +98,21 @@ def add(group, setting, runs, score=None, note=""):
     abl.append(r)
     if score is not None:
         abl_scores[(group, setting)] = score
-    tqdm.write(f"  {group:16s} {setting:45s} PR-AUC {r['pr_auc']:.4f} ± {r['pr_auc_std']:.4f}  "
+    tqdm.write(f"  {group:16s} {setting:46s} PR-AUC {r['pr_auc']:.4f} ± {r['pr_auc_std']:.4f}  "
                f"前 1% {r['hits_at_1']:.1f}  前 10% {r['hits_at_10']:.1f}")
 
 
-# ---- 主方法（參照列）----
+def deterministic(y_s, y_va_s):
+    return [{**metrics(yte, y_s, best_f1_tau(yva, y_va_s)), "val_pr_auc": average_precision_score(yva, y_va_s)}]
+
+
+# ---- 主方法與雙邊版本（參照列，必須和主實驗的分數一致）----
 ref_runs, s_t2, s_t2_va = run_if()
-assert np.allclose(s_t2, ts.if_danger.values), "重算的 Tier 2 分數和主實驗不同"
-lap("主方法重算（5 seed）")
+assert np.allclose(s_t2, ts.t2.values), "重算的 Tier 2 分數和主實驗不同"
+two_runs, s_two, s_two_va = run_if(transform=None, params=P_TWO)
+assert np.allclose(s_two, ts.if_danger.values), "重算的雙邊分數和主實驗不同"
+PRIM = f"IF {'one' if PRIMARY_IS_ONE_SIDED else 'two'}-sided (primary)"
+lap("主方法與雙邊版本重算（5 seed × 2）")
 
 # ---- A1 訓練資料污染 ----
 nat = ytr.mean()
@@ -110,44 +123,42 @@ for rate, label in [(0.0, "0% (normal only, primary)"), (0.001, "0.1%"), (0.002,
 lap("A1 訓練資料污染")
 
 # ---- A2 分數函數（全部只用正常樣本、危險 6 個特徵）----
-add("A2 scoring", "IF two-sided (primary)", ref_runs, s_t2)
-os_runs, s_os, s_os_va = run_if(transform=one_sided)
-add("A2 scoring", "IF one-sided tail", os_runs, s_os, "only deviations toward the dangerous side count")
-
+add("A2 scoring", PRIM, ref_runs, s_t2)
+add("A2 scoring", "IF two-sided (own val-selected params)" if PRIMARY_IS_ONE_SIDED else "IF one-sided tail",
+    two_runs if PRIMARY_IS_ONE_SIDED else run_if(transform="one_sided")[0], s_two if PRIMARY_IS_ONE_SIDED else None)
+if PRIMARY_IS_ONE_SIDED:
+    add("A2 scoring", "IF two-sided (same params as primary)", run_if(transform=None)[0],
+        note="isolates the effect of the score direction alone")
 sc = StandardScaler().fit(normal[DANGER])
 Zn, Zva, Zte = (sc.transform(d[DANGER]) for d in (normal, va, te))
 # 不用模型：單邊偏離量直接加總（看 Isolation Forest 本身有沒有比「加總」多學到什麼）
 s_sum, s_sum_va = one_sided(Zte, DANGER).sum(1), one_sided(Zva, DANGER).sum(1)
-add("A2 scoring", "one-sided deviation sum (no model)",
-    [{**metrics(yte, s_sum, best_f1_tau(yva, s_sum_va)), "val_pr_auc": average_precision_score(yva, s_sum_va)}], s_sum)
+add("A2 scoring", "one-sided deviation sum (no model)", deterministic(s_sum, s_sum_va), s_sum)
 cov = EmpiricalCovariance().fit(Zn)
-s_maha = cov.mahalanobis(Zte)
-s_maha_va = cov.mahalanobis(Zva)
-add("A2 scoring", "Mahalanobis distance (two-sided)",
-    [{**metrics(yte, s_maha, best_f1_tau(yva, s_maha_va)), "val_pr_auc": average_precision_score(yva, s_maha_va)}], s_maha)
+add("A2 scoring", "Mahalanobis distance (two-sided)", deterministic(cov.mahalanobis(Zte), cov.mahalanobis(Zva)))
 knn = []
 for seed in tqdm(SEEDS, desc="kNN", unit="seed", leave=False):
     idx = np.random.default_rng(seed).choice(len(Zn), 20000, replace=False)
     nn = NearestNeighbors(n_neighbors=10).fit(Zn[idx])
     kv = nn.kneighbors(Zva)[0].mean(1)
-    knn.append({**metrics(yte, nn.kneighbors(Zte)[0].mean(1), best_f1_tau(yva, kv)), "val_pr_auc": average_precision_score(yva, kv)})
+    knn.append({**metrics(yte, nn.kneighbors(Zte)[0].mean(1), best_f1_tau(yva, kv)),
+                "val_pr_auc": average_precision_score(yva, kv)})
 add("A2 scoring", "kNN mean distance, k=10 (two-sided)", knn, note="20k normal reference points per seed")
 gmm = []
 for seed in tqdm(SEEDS, desc="GMM", unit="seed", leave=False):
     gm = GaussianMixture(n_components=8, covariance_type="full", reg_covar=1e-3, random_state=seed).fit(Zn)
     gv = -gm.score_samples(Zva)
-    gmm.append({**metrics(yte, -gm.score_samples(Zte), best_f1_tau(yva, gv)), "val_pr_auc": average_precision_score(yva, gv)})
+    gmm.append({**metrics(yte, -gm.score_samples(Zte), best_f1_tau(yva, gv)),
+                "val_pr_auc": average_precision_score(yva, gv)})
 add("A2 scoring", "GMM neg. log-likelihood, 8 comp. (two-sided)", gmm)
 lap("A2 分數函數")
 
-# ---- A3 特徵組（雙邊 Isolation Forest）----
-CTX_EXTRA = ["counter_attack", "score_diff", "own_events_10s", "opp_events_10s", "own_min_x_10s"]
-for name, feats in [("danger 6 (primary)", DANGER), ("all 28", FULL),
+# ---- A3 特徵組（主方法的分數方向；單邊需要每個特徵的方向，所以只做「拿掉」）----
+for name, feats in [("danger 6 (primary)", DANGER),
                     ("− loss location (dist_own_goal, lateral)", [f for f in DANGER if f not in ("dist_own_goal", "lateral")]),
                     ("− landing point (end_x, end_lateral)", [f for f in DANGER if f not in ("end_x", "end_lateral")]),
                     ("− backward", [f for f in DANGER if f != "backward"]),
-                    ("− pressure (opp_duel_3s)", [f for f in DANGER if f != "opp_duel_3s"]),
-                    ("+ 5 context features", DANGER + CTX_EXTRA)]:
+                    ("− pressure (opp_duel_3s)", [f for f in DANGER if f != "opp_duel_3s"])]:
     runs = ref_runs if feats is DANGER else run_if(feats=feats)[0]
     add("A3 features", name, runs)
 # 同樣的危險 6 個特徵給 XGBoost：分開「標籤」和「特徵」各自貢獻多少
@@ -157,7 +168,8 @@ for seed in SEEDS:
                           min_child_weight=XB["min_child_weight"], subsample=0.8, colsample_bytree=0.8,
                           random_state=seed, n_jobs=2, tree_method="hist").fit(tr[DANGER], ytr)
     xv = m.predict_proba(va[DANGER])[:, 1]
-    xr.append({**metrics(yte, m.predict_proba(te[DANGER])[:, 1], best_f1_tau(yva, xv)), "val_pr_auc": average_precision_score(yva, xv)})
+    xr.append({**metrics(yte, m.predict_proba(te[DANGER])[:, 1], best_f1_tau(yva, xv)),
+               "val_pr_auc": average_precision_score(yva, xv)})
 add("A3 features", "ref: XGBoost on danger 6 (supervised)", xr, note="Tier 3 hyperparameters")
 lap("A3 特徵組")
 
@@ -174,30 +186,28 @@ abl_df.to_csv(RES / "ablations.csv", index=False)
 
 # ---- 關鍵比較的顯著性（5 個 seed 平均後的分數，以比賽為單位的 block bootstrap）----
 log["significance"] = {
-    "one_sided_minus_two_sided": bootstrap_gap(yte, s_os, s_t2, g, desc="單邊 − 雙邊"),
-    "one_sided_minus_single": bootstrap_gap(yte, s_os, ts.single.values, g, desc="單邊 − 單一特徵"),
-    "xgb_minus_one_sided": bootstrap_gap(yte, ts.xgb.values, s_os, g, desc="XGBoost − 單邊"),
-    "sum_minus_one_sided_if": bootstrap_gap(yte, s_sum, s_os, g, desc="加總 − 單邊 IF"),
+    "primary_minus_two_sided": bootstrap_gap(yte, s_t2, s_two, g, desc="主方法 − 雙邊"),
+    "sum_minus_primary": bootstrap_gap(yte, s_sum, s_t2, g, desc="加總 − 主方法"),
 }
 for k, v in log["significance"].items():
     print(f"  {k:28s} {v[0]:+.4f}  95% CI [{v[1]:+.4f}, {v[2]:+.4f}]")
-lap("消融顯著性（bootstrap 4 組 × 1000 次）")
+lap("消融顯著性（bootstrap 2 組 × 1000 次）")
 
 # ===========================================================================
-# 誤差分析：審查預算 1%（τ 用驗證集決定，測試集只套用）
+# 誤差分析：審查預算 1%（τ 用驗證集決定，測試集只套用）；主方法為主，雙邊作對照
 # ===========================================================================
 tau = float(np.quantile(s_t2_va, 0.99))
-tau_os = float(np.quantile(s_os_va, 0.99))
-A = te.assign(score=s_t2, flag=s_t2 >= tau, score_os=s_os, flag_os=s_os >= tau_os,
+tau_two = float(np.quantile(s_two_va, 0.99))
+A = te.assign(score=s_t2, flag=s_t2 >= tau, score_two=s_two, flag_two=s_two >= tau_two,
               single=ts.single.values, s_xgb=ts.xgb.values,
-              pct=pd.Series(s_t2).rank(pct=True).values)
+              pct=pd.Series(s_t2).rank(pct=True).values, s_minus_tau=s_t2 - tau)
 A["outcome"] = np.select([A.flag & (A.label == 1), A.flag & (A.label == 0), ~A.flag & (A.label == 1)],
                          ["TP", "FP", "FN"], "TN")
 log["tau_budget_1pct"] = {"tau": tau, "test_alert_rate": float(A.flag.mean()),
                           "confusion": A.outcome.value_counts().to_dict(),
-                          "one_sided": {"tau": tau_os, "test_alert_rate": float(A.flag_os.mean()),
-                                        "TP": int((A.flag_os & (A.label == 1)).sum()),
-                                        "FP": int((A.flag_os & (A.label == 0)).sum())}}
+                          "two_sided": {"tau": tau_two, "test_alert_rate": float(A.flag_two.mean()),
+                                        "TP": int((A.flag_two & (A.label == 1)).sum()),
+                                        "FP": int((A.flag_two & (A.label == 0)).sum())}}
 
 # 四種結果的平均樣貌（含「之後發生了什麼」：只用於解釋，不是特徵）
 PROFILE = ["x", "dist_own_goal", "lateral", "end_x", "end_lateral", "pass_len", "backward", "opp_duel_3s",
@@ -214,7 +224,7 @@ log["fp_near_miss"] = {"FP_opp_shot_rate": float(A.loc[A.outcome == "FP", "opp_s
 # 依丟球位置：每種方法在各區的召回（前 1%）
 k1 = int(round(len(A) * 0.01))
 top = {name: np.isin(np.arange(len(A)), np.argsort(-A[col].values, kind="stable")[:k1])
-       for name, col in [("single", "single"), ("T2", "score"), ("T2_one_sided", "score_os"), ("T3", "s_xgb")]}
+       for name, col in [("single", "single"), ("T2_primary", "score"), ("T2_two_sided", "score_two"), ("T3", "s_xgb")]}
 A["zone"] = pd.cut(A.x, [0, 100 / 3, 200 / 3, 100], labels=["own third", "middle", "opp third"], include_lowest=True)
 zr = []
 for z, d in A.groupby("zone", observed=True):
@@ -231,7 +241,7 @@ print(zone_df.round(4).to_string(index=False))
 # ---- 每個特徵的貢獻 ----
 # Isolation Forest：遮蔽法。把一個特徵換成「正常訓練樣本的中位數」，看分數掉多少（5 個 seed 平均）
 #   正值 = 這個特徵讓這筆失誤更像異常
-models = [fit_if(normal, DANGER, P, seed) for seed in SEEDS]
+models = [fit_if(normal, DANGER, P, seed, TF) for seed in SEEDS]
 med = normal[DANGER].median()
 
 
@@ -274,6 +284,9 @@ picks = [
     ("FP: flagged, opponent shot but missed", A[(A.outcome == "FP") & (A.opp_shot_15s == 1)].nlargest(1, "score")),
     ("FN: near miss (just below tau)", A[A.outcome == "FN"].nlargest(1, "score")),
     ("FN: lowest-scored goal turnover", A[A.label == 1].nsmallest(1, "score")),
+    # 雙邊會標記、主方法不會標記的非致命失誤裡，挑在自家三分之一的（看起來最像危險、卻是往安全方向罕見的那種）
+    ("FP removed by primary: top two-sided FP in own third not flagged by primary",
+     A[A.flag_two & ~A.flag & (A.label == 0) & (A.x < 100 / 3)].nlargest(1, "score_two")),
 ]
 cases = pd.concat([d.assign(case=c) for c, d in picks])
 names = {}
@@ -292,7 +305,7 @@ shp_c = shap_xgb(cases)
 top_shap = shp_c.apply(lambda r: "; ".join(f"{f} {r[f]:+.2f}" for f in r.abs().nlargest(4).index), axis=1)
 SHOW = ["case", "match", "team", "player", "competition", "matchId", "eventId", "minute", "x", "y", "end_x",
         "end_lateral", "pass_len", "backward", "opp_duel_3s", "pt_cross", "pt_launch", "counter_attack",
-        "pct", "single", "s_xgb", "opp_shot_15s", "sec_to_goal", "events_to_goal", "label"]
+        "score", "s_minus_tau", "pct", "score_two", "single", "s_xgb", "opp_shot_15s", "sec_to_goal", "events_to_goal", "label"]
 case_df = cases[[c for c in SHOW if c in cases]].join(occ_c).assign(xgb_top_shap=top_shap)
 case_df.to_csv(RES / "error_cases.csv", index=False)
 print(case_df.T.to_string())
@@ -321,8 +334,8 @@ fig.tight_layout(); fig.savefig(FIG / "fig1_eda_train.png", dpi=160); plt.close(
 
 # 圖 2：PR 曲線（測試集）
 fig, ax = plt.subplots(figsize=(5.2, 4))
-for lab, s, c in [("T1 single feature (end_x)", ts.single.values, C["single"]), ("T2 IF two-sided (primary)", s_t2, C["T2"]),
-                  ("T2 IF one-sided (ablation A2)", s_os, C["T2os"]), ("T3 XGBoost", ts.xgb.values, C["T3"])]:
+for lab, s, c in [("T1 single feature (end_x)", ts.single.values, C["single"]), (f"T2 {PRIM}", s_t2, C["T2os"]),
+                  ("T2 IF two-sided", s_two, C["T2"]), ("T3 XGBoost", ts.xgb.values, C["T3"])]:
     p, r, _ = precision_recall_curve(yte, s)
     ax.plot(r, p, c=c, lw=1.4, label=lab)
 ax.axhline(yte.mean(), ls="--", c="k", lw=.8, label=f"random ({yte.mean():.4f})")
@@ -335,7 +348,7 @@ d = abl_df[abl_df.ablation != "A4 threshold"].iloc[::-1]
 cols = d.ablation.map({"A1 contamination": "#B279A2", "A2 scoring": C["T2os"], "A3 features": C["T2"]})
 ax.barh(range(len(d)), d.pr_auc, xerr=d.pr_auc_std, color=cols)
 ax.set_yticks(range(len(d)), [f"{a[:2]} {s}" for a, s in zip(d.ablation, d.setting)], fontsize=7)
-ax.axvline(summarize("", ref_runs)["pr_auc"], c=C["T2"], ls="--", lw=.8, label="primary (IF two-sided, danger 6)")
+ax.axvline(summarize("", ref_runs)["pr_auc"], c=C["T2"], ls="--", lw=.8, label=f"primary ({PRIM})")
 ax.axvline(metrics(yte, ts.single.values)["pr_auc"], c=C["single"], ls=":", lw=1, label="T1 single feature")
 ax.set_xlabel("test PR-AUC (mean ± std over 5 seeds)"); ax.legend(fontsize=7, loc="upper right")
 fig.tight_layout(); fig.savefig(FIG / "fig3_ablations.png", dpi=160); plt.close(fig)
