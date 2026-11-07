@@ -1,4 +1,4 @@
-zone,n,goals,goal_rate,single_flagged,single_hits,T2_flagged,T2_hits,T2_one_sided_flagged,T2_one_sided_hits,T3_flagged,T3_hits
-own third,15241,89,0.005839511843054918,519,11,406,9,452,15,415,25
-middle,19796,65,0.003283491614467569,8,0,51,0,89,2,116,4
-opp third,19235,28,0.0014556797504549,16,0,86,0,2,0,12,0
+zone,n,goals,goal_rate,single_flagged,single_hits,T2_primary_flagged,T2_primary_hits,T2_two_sided_flagged,T2_two_sided_hits,T3_flagged,T3_hits
+own third,15241,89,0.005839511843054918,519,11,452,15,406,9,415,25
+middle,19796,65,0.003283491614467569,8,0,89,2,51,0,116,4
+opp third,19235,28,0.0014556797504549,16,0,2,0,86,0,12,0

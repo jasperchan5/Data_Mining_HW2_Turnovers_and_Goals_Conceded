@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 從原始資料重跑（約 10–20 分鐘，視 CPU 而定）
+# 從原始資料重跑（約 15–25 分鐘，視 CPU 而定）
 # Windows 的 Git Bash 也能跑：
 #   - 自動找可以用的 Python（Windows 上 python3 常常是微軟商店的空殼，執行了不會有任何反應）
 #   - python -u：不緩衝輸出，進度會即時印出來（Git Bash 的視窗不是真正的終端機，不加 -u 要等跑完才一次印出）

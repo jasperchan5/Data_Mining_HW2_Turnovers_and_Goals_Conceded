@@ -10,6 +10,9 @@ R2 修正方案一：標籤改成「15 秒內被射門」（誤差分析發現 F
     同樣的方法、超參數，只換標籤；Tier 2 的「正常」改成沒有被射門的失誤
 R3 修正方案二 / 檢驗 H3：加入失誤後 5 秒的發展（對手動作數、本隊動作數、球最接近自家球門的位置）
     這些特徵用到失誤之後的資訊，不能部署，只用來檢驗「漏掉的致命失誤是不是取決於之後發生的事」
+R4 可部署的修正：傳球當下的情境特徵（XGBoost 危險 6 個 vs 全部 28 個）能不能抓回延遲的失球
+R5 leave-one-league-out：只用測試期之前的比賽，鎖定所有設定，每次拿掉一個聯賽當評估集
+    （單邊的想法來自看過測試集的觀察，這是唯一完全不受那個觀察影響的檢查）
 """
 
 from __future__ import annotations
@@ -143,6 +146,59 @@ for name, s in [("T3 XGBoost", ts.xgb.values), ("T3 XGBoost + post 5 s", post["x
 log["H3_delayed_vs_quick"] = r3
 print(pd.DataFrame(r3).T.to_string())
 lap("R3 失誤後 5 秒的發展")
+
+# ---- R4 可部署的修正：傳球當下的情境特徵能不能抓回延遲的失球 ----
+# 比較 XGBoost 只用危險 6 個 vs 再加上 22 個傳球當下就知道的特徵（反擊、前 10 秒雙方動作數、本隊最後防線…）
+from common import DANGER  # noqa: E402
+r5 = {}
+for name, feats in [("XGBoost danger 6", DANGER), ("XGBoost all 28 (adds pass-time context)", FULL)]:
+    sl = [xgb_model(seed).fit(tr0[feats], tr0.label.values).predict_proba(te0[feats])[:, 1] for seed in SEEDS]
+    s = np.mean(sl, axis=0)
+    order = np.argsort(-s, kind="stable")
+    top, top10 = np.zeros(len(te0), bool), np.zeros(len(te0), bool)
+    top[order[:k]] = True
+    top10[order[:10 * k]] = True
+    r5[name] = {"hits1_quick": int((top & quick).sum()), "hits1_delayed": int((top & delayed).sum()),
+                "hits10_quick": int((top10 & quick).sum()), "hits10_delayed": int((top10 & delayed).sum())}
+log["R4_context_features_delayed"] = r5
+print(pd.DataFrame(r5).T.to_string())
+lap("R4 傳球當下的情境特徵")
+
+# ---- R5 換一個聯賽評估（leave-one-league-out），只用測試期之前的比賽 ----
+# 單邊的想法來自看過測試集的觀察（§6.2），所以這裡完全不用測試期的比賽：
+# 在訓練 + 驗證期間（2018-04-07 以前）的比賽中，每次拿掉一個聯賽當評估集，其他聯賽與國際賽當訓練集
+# 方法、超參數、方向完全鎖定（沿用主實驗驗證集選出的設定），不再調整
+pre = pd.concat([tr0, va0], ignore_index=True)
+P_TWO = main_log["iforest_best"]["danger (6), two-sided"]["params"]
+LEAGUES = ["English first division", "French first division", "German first division",
+           "Italian first division", "Spanish first division"]
+lolo = []
+for lg in tqdm(LEAGUES, desc="R5 leave-one-league-out", unit="聯賽"):
+    trn, ev = pre[pre.competition != lg], pre[pre.competition == lg]
+    y = ev.label.values
+    row = {"league": lg, "n": len(ev), "positives": int(y.sum()),
+           "single_end_x": average_precision_score(y, -ev.end_x.values)}
+    nrm = trn[trn.label == 0]
+    for name, feats, tf, prm in [("IF two-sided", FEATS, None, P_TWO), ("IF one-sided", FEATS, "one_sided", P)]:
+        prs, h1 = [], []
+        for seed in SEEDS:
+            f, _, _, _ = fit_if(nrm, feats, prm, seed, tf)
+            m = metrics(y, f(ev))
+            prs.append(m["pr_auc"]); h1.append(m["hits_at_1"])
+        row[name], row[f"{name} std"], row[f"{name} hits@1%"] = np.mean(prs), np.std(prs), np.mean(h1)
+    row["single hits@1%"] = metrics(y, -ev.end_x.values)["hits_at_1"]
+    xs = [xgb_model(seed).fit(trn[FULL], trn.label.values).predict_proba(ev[FULL])[:, 1] for seed in SEEDS]
+    row["XGBoost"] = np.mean([average_precision_score(y, x) for x in xs])
+    lolo.append(row)
+lolo = pd.DataFrame(lolo)
+lolo.to_csv(RES / "leave_one_league_out.csv", index=False)
+log["R5_leave_one_league_out"] = {
+    "one_sided_beats_two_sided": int((lolo["IF one-sided"] > lolo["IF two-sided"]).sum()),
+    "one_sided_beats_single": int((lolo["IF one-sided"] > lolo["single_end_x"]).sum()),
+    "mean": lolo[["single_end_x", "IF two-sided", "IF one-sided", "XGBoost"]].mean().to_dict()}
+print(lolo.round(4).to_string(index=False))
+print(log["R5_leave_one_league_out"])
+lap("R5 leave-one-league-out")
 
 out = pd.DataFrame(rows)
 out.to_csv(RES / "robustness_checks.csv", index=False)

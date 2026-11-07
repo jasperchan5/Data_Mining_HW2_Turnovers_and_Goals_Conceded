@@ -1,0 +1,91 @@
+{
+  "T2_config": "danger (6), one-sided",
+  "imputed": {
+    "train": {
+      "n": 5046,
+      "positives": 3
+    },
+    "val": {
+      "n": 1728,
+      "positives": 0
+    },
+    "test": {
+      "n": 1606,
+      "positives": 1
+    }
+  },
+  "shot_label": {
+    "train": {
+      "n": 170396,
+      "positives": 4688,
+      "rate": 0.02751238291978685
+    },
+    "val": {
+      "n": 59351,
+      "positives": 1580,
+      "rate": 0.026621286920186685
+    },
+    "test": {
+      "n": 54272,
+      "positives": 1423,
+      "rate": 0.02621978183962264
+    }
+  },
+  "goal_model_on_shot_label": {
+    "pr_auc_shot": 0.1050044942387863,
+    "precision_at_1pct_goal_label": 0.03130755064456722,
+    "precision_at_1pct_shot_label": 0.2265193370165746,
+    "shot_rate_test": 0.02621978183962264,
+    "goal_rate_test": 0.0033534787735849058
+  },
+  "H3_delayed_vs_quick": {
+    "T3 XGBoost": {
+      "quick_goals": 46,
+      "delayed_goals": 136,
+      "hits1_quick": 20,
+      "hits1_delayed": 9,
+      "hits10_quick": 33,
+      "hits10_delayed": 59
+    },
+    "T3 XGBoost + post 5 s": {
+      "quick_goals": 46,
+      "delayed_goals": 136,
+      "hits1_quick": 23,
+      "hits1_delayed": 17,
+      "hits10_quick": 37,
+      "hits10_delayed": 66
+    },
+    "T2 IF danger (6), one-sided": {
+      "quick_goals": 46,
+      "delayed_goals": 136,
+      "hits1_quick": 16,
+      "hits1_delayed": 1,
+      "hits10_quick": 31,
+      "hits10_delayed": 38
+    }
+  },
+  "R4_context_features_delayed": {
+    "XGBoost danger 6": {
+      "hits1_quick": 20,
+      "hits1_delayed": 4,
+      "hits10_quick": 33,
+      "hits10_delayed": 51
+    },
+    "XGBoost all 28 (adds pass-time context)": {
+      "hits1_quick": 20,
+      "hits1_delayed": 9,
+      "hits10_quick": 33,
+      "hits10_delayed": 59
+    }
+  },
+  "R5_leave_one_league_out": {
+    "one_sided_beats_two_sided": 5,
+    "one_sided_beats_single": 5,
+    "mean": {
+      "single_end_x": 0.010548603503649109,
+      "IF two-sided": 0.009970866229700007,
+      "IF one-sided": 0.01586163411022714,
+      "XGBoost": 0.034384416434339926
+    }
+  }
+}
