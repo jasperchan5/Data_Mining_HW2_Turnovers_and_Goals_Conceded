@@ -1,0 +1,5 @@
+step,seconds
+建立 StatsBomb 失誤表,24.7
+鎖定的模型套到 StatsBomb,75.56
+bootstrap（4 組 × 1000 次）,72.98
+total,148.63

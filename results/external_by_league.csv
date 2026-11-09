@@ -1,0 +1,2 @@
+competition,n,positives,random (base rate),T1 single feature (-end_x),"T2 IF danger (6), two-sided","T2 IF danger (6), one-sided (primary)",T3 XGBoost (trained on Wyscout)
+Premier League,73830,151,0.0025026324465284478,0.005828280804430547,0.002839334600454571,0.0048722633397622695,0.014302743630272624

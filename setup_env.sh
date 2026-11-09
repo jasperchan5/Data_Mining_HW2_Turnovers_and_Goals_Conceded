@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 建立虛擬環境 DM_HW2_G14 並安裝 requirements.txt（Windows 的 Git Bash、Linux、macOS 都能用）
+# 建立虛擬環境 DM_HW2_G14、安裝 requirements.txt，並下載外部測試資料 StatsBomb 英超 2015/16（Windows 的 Git Bash、Linux、macOS 都能用）
 #   bash setup_env.sh
 # 之後直接 bash run_all.sh，它會自動使用這個虛擬環境。
 set -euo pipefail
@@ -46,6 +46,17 @@ echo "虛擬環境：$("$VPY" -c 'import sys, platform; print(sys.version.split(
 #    --only-binary=:all:：只裝預先編譯好的檔案，找不到就直接報錯，不會在 Windows 上嘗試從原始碼編譯
 "$VPY" -m pip install --upgrade pip
 "$VPY" -m pip install --only-binary=:all: -r requirements.txt
+
+# 5. 下載外部測試資料：StatsBomb Open Data 英超 2015/16（約 1 GB，放在 data/external/，不進 git）
+#    已下載的檔案會略過，中斷後重跑即可續傳；不想下載：SKIP_STATSBOMB=1 bash setup_env.sh
+if [ "${SKIP_STATSBOMB:-0}" = "1" ]; then
+    echo "略過 StatsBomb 下載（SKIP_STATSBOMB=1）；run_all.sh 會自動略過外部測試"
+elif PYTHONUTF8=1 "$VPY" -u src/download_statsbomb.py; then
+    echo "StatsBomb 資料已就緒"
+else
+    echo "StatsBomb 下載沒有完成（可能是網路問題）。之後可以單獨重跑：$VPY src/download_statsbomb.py" >&2
+    echo "沒有這份資料時，run_all.sh 會略過外部測試，其他步驟照常執行。" >&2
+fi
 
 echo
 echo "完成。之後直接執行：bash run_all.sh（會自動使用 $ENV）"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 從原始資料重跑（約 15–25 分鐘，視 CPU 而定）
+# 從原始資料重跑（約 15–25 分鐘，視 CPU 而定；外部測試需先下載 StatsBomb 資料）
 # Windows 的 Git Bash 也能跑：
 #   - 自動找可以用的 Python（Windows 上 python3 常常是微軟商店的空殼，執行了不會有任何反應）
 #   - python -u：不緩衝輸出，進度會即時印出來（Git Bash 的視窗不是真正的終端機，不加 -u 要等跑完才一次印出）
@@ -31,6 +31,12 @@ START=$SECONDS
 "$PY" -u src/turnover_experiment.py   # 探索、三層方法、顯著性（各步驟時間 → results/timing_experiment.csv）
 "$PY" -u src/ablation_analysis.py     # 消融、誤差分析、圖（各步驟時間 → results/timing_ablation.csv）
 "$PY" -u src/robustness_checks.py     # 補值洩漏檢查、射門標籤、失誤後發展（各步驟時間 → results/timing_robustness.csv）
+# 外部測試：StatsBomb Premier League 2015/16（setup_env.sh 會下載，約 1 GB；或單獨執行 python src/download_statsbomb.py）
+if [ -f data/external/statsbomb/matches/2_27.json ]; then
+    "$PY" -u src/statsbomb_external.py   # 鎖定的流程套到沒碰過的賽季（各步驟時間 → results/timing_external.csv）
+else
+    echo "（略過外部測試：找不到 data/external/statsbomb/，先執行 bash setup_env.sh 或 $PY src/download_statsbomb.py）"
+fi
 T=$((SECONDS - START))
 echo
 echo "全部完成，總共 $((T / 60)) 分 $((T % 60)) 秒"

@@ -46,5 +46,35 @@
   "fp_near_miss": {
     "FP_opp_shot_rate": 0.20390070921985815,
     "TN_opp_shot_rate": 0.021073870642304673
+  },
+  "validation_top1_by_zone": {
+    "two_sided": {
+      "own third": {
+        "alerts": 416,
+        "hits": 8
+      },
+      "middle": {
+        "alerts": 70,
+        "hits": 1
+      },
+      "opp third": {
+        "alerts": 108,
+        "hits": 0
+      }
+    },
+    "primary": {
+      "own third": {
+        "alerts": 487,
+        "hits": 13
+      },
+      "middle": {
+        "alerts": 100,
+        "hits": 2
+      },
+      "opp third": {
+        "alerts": 7,
+        "hits": 0
+      }
+    }
   }
 }

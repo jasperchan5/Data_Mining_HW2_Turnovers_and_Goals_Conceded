@@ -236,6 +236,18 @@ for z, d in A.groupby("zone", observed=True):
     zr.append(row)
 zone_df = pd.DataFrame(zr)
 zone_df.to_csv(RES / "zone_breakdown_top1.csv", index=False)
+
+# 驗證集上的同一個檢查：雙邊在前 1% 是否已經把名額花在「對方三分之一的罕見但安全的失誤」上
+# （單邊的設計動機只看驗證集就看得到，不需要測試集）
+zv = pd.cut(va.x, [0, 100 / 3, 200 / 3, 100], labels=["own third", "middle", "opp third"], include_lowest=True)
+kv = int(round(len(va) * 0.01))
+log["validation_top1_by_zone"] = {}
+for name, sv in [("two_sided", s_two_va), ("primary", s_t2_va)]:
+    top = np.argsort(-sv, kind="stable")[:kv]
+    log["validation_top1_by_zone"][name] = {
+        z: {"alerts": int((zv.iloc[top] == z).sum()), "hits": int(((zv.iloc[top] == z) & (yva[top] == 1)).sum())}
+        for z in ["own third", "middle", "opp third"]}
+print("驗證集前 1%：", log["validation_top1_by_zone"])
 print(zone_df.round(4).to_string(index=False))
 
 # ---- 每個特徵的貢獻 ----

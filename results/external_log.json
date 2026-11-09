@@ -1,0 +1,82 @@
+{
+  "n": 73830,
+  "matches": 380,
+  "positives": 151,
+  "rate": 0.002045239062711635,
+  "by_competition": {
+    "size": {
+      "Premier League": 73830
+    },
+    "sum": {
+      "Premier League": 151
+    }
+  },
+  "tau_danger (6), two-sided": 0.61319337342624,
+  "tau_danger (6), one-sided": 0.6432867135275122,
+  "significance": {
+    "one_sided_minus_two_sided": [
+      0.0020329287393076986,
+      0.0013603889327810732,
+      0.0033776575642445535
+    ],
+    "one_sided_minus_single": [
+      -0.0009560174646682778,
+      -0.0022371462087137496,
+      0.0008758330235460083
+    ],
+    "two_sided_minus_single": [
+      -0.0029889462039759764,
+      -0.004242988383731837,
+      -0.0018503225513613669
+    ],
+    "xgb_minus_one_sided": [
+      0.009430480290510353,
+      0.004114963942106489,
+      0.026318739503958976
+    ]
+  },
+  "top1_by_zone": {
+    "T2 IF danger (6), one-sided (primary)": {
+      "own": {
+        "alerts": 518,
+        "hits": 4
+      },
+      "mid": {
+        "alerts": 214,
+        "hits": 1
+      },
+      "opp": {
+        "alerts": 6,
+        "hits": 0
+      }
+    },
+    "T2 IF danger (6), two-sided": {
+      "own": {
+        "alerts": 418,
+        "hits": 5
+      },
+      "mid": {
+        "alerts": 109,
+        "hits": 1
+      },
+      "opp": {
+        "alerts": 211,
+        "hits": 0
+      }
+    },
+    "T1 single feature (-end_x)": {
+      "own": {
+        "alerts": 735,
+        "hits": 2
+      },
+      "mid": {
+        "alerts": 3,
+        "hits": 0
+      },
+      "opp": {
+        "alerts": 0,
+        "hits": 0
+      }
+    }
+  }
+}

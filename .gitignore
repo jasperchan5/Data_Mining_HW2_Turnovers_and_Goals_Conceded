@@ -9,6 +9,8 @@ __pycache__/
 # （下載方式見 data/raw/README.md；處理好的 data/processed/turnovers.csv 有放）
 data/raw/*
 !data/raw/README.md
+# 外部測試資料（StatsBomb Premier League 2015/16，約 1 GB；用 python src/download_statsbomb.py 下載）
+data/external/
 
 # OS / editor
 .DS_Store
